@@ -1,0 +1,279 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String?        @unique
+  passwordHash  String?
+  name          String?
+  isGuest       Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  profile       PlayerProfile?
+  sessions      GameSession[]
+  scores        GameScore[]
+  subscriptions Subscription[]
+
+  createdChallenges   Challenge[]        @relation("CreatedChallenges")
+  attemptedChallenges ChallengeAttempt[]
+  tournamentEntries   TournamentEntry[]
+
+  @@index([email])
+}
+
+model PlayerProfile {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username             String   @unique
+  avatar               String   @default("avatar_neon_cyber")
+  title                String   @default("title_recruit")
+  frame                String   @default("frame_default")
+  soundpack            String   @default("sound_cyber_classic")
+  cursorEffect         String   @default("cursor_default")
+  level                Int      @default(1)
+  currentXp            Int      @default(0)
+  coins                Int      @default(200)
+  tier                 String   @default("Bronze")
+  streakDays           Int      @default(1)
+  lastDailyDate        String?
+  totalPlayTimeSeconds Int      @default(0)
+  gamesPlayedTotal     Int      @default(0)
+  isPro                Boolean  @default(false)
+  country              String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  statistics           PlayerStatistics[]
+  unlockedAchievements PlayerAchievement[]
+  inventory            PlayerInventory[]
+
+  @@index([username])
+  @@index([level])
+}
+
+model Game {
+  id               String   @id // e.g. "reaction-rush"
+  title            String
+  category         String   // "reflex", "precision", "cognitive", "speed"
+  description      String
+  higherIsBetter   Boolean  @default(true)
+  scoreUnit        String
+  benchmarkGood    Float
+  benchmarkPro     Float
+  benchmarkGodlike Float
+  createdAt        DateTime @default(now())
+
+  scores           GameScore[]
+  sessions         GameSession[]
+  statistics       PlayerStatistics[]
+  challenges       Challenge[]
+  snapshots        LeaderboardSnapshot[]
+  tournaments      Tournament[]
+}
+
+model GameSession {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameId           String
+  game             Game     @relation(fields: [gameId], references: [id])
+  token            String   @unique
+  isRanked         Boolean  @default(true)
+  mode             String   @default("standard") // standard, daily, challenge, tournament
+  durationMs       Int?
+  verificationHash String?
+  clientIp         String?
+  userAgent        String?
+  startedAt        DateTime @default(now())
+  completedAt      DateTime?
+
+  score            GameScore?
+
+  @@index([userId, gameId])
+  @@index([token])
+}
+
+model GameScore {
+  id                String      @id @default(cuid())
+  sessionId         String      @unique
+  session           GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameId            String
+  game              Game        @relation(fields: [gameId], references: [id])
+  score             Float
+  accuracyPercent   Float?
+  averageReactionMs Float?
+  fastestReactionMs Float?
+  slowestReactionMs Float?
+  rankTier          String      @default("Rookie")
+  xpEarned          Int         @default(100)
+  coinsEarned       Int         @default(25)
+  isRanked          Boolean     @default(true)
+  achievedAt        DateTime    @default(now())
+
+  @@index([gameId, score])
+  @@index([userId, gameId])
+  @@index([achievedAt])
+}
+
+model PlayerStatistics {
+  id               String        @id @default(cuid())
+  profileId        String
+  profile          PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  gameId           String
+  game             Game          @relation(fields: [gameId], references: [id])
+  bestScore        Float
+  averageScore     Float
+  timesPlayed      Int           @default(0)
+  totalPlayTimeSec Int           @default(0)
+  updatedAt        DateTime      @updatedAt
+
+  @@unique([profileId, gameId])
+}
+
+model Achievement {
+  id          String   @id
+  title       String
+  description String
+  category    String
+  icon        String
+  xpReward    Int
+  coinsReward Int
+  createdAt   DateTime @default(now())
+
+  players     PlayerAchievement[]
+}
+
+model PlayerAchievement {
+  id            String        @id @default(cuid())
+  profileId     String
+  profile       PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement   @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  unlockedAt    DateTime      @default(now())
+
+  @@unique([profileId, achievementId])
+}
+
+model Challenge {
+  id           String    @id @default(cuid())
+  token        String    @unique
+  gameId       String
+  game         Game      @relation(fields: [gameId], references: [id])
+  creatorId    String
+  creator      User      @relation("CreatedChallenges", fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorScore Float
+  seed         Int
+  status       String    @default("pending") // pending, completed, expired
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+
+  attempts     ChallengeAttempt[]
+
+  @@index([token])
+  @@index([creatorId])
+}
+
+model ChallengeAttempt {
+  id          String    @id @default(cuid())
+  challengeId String
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score       Float
+  isWinner    Boolean   @default(false)
+  attemptedAt DateTime  @default(now())
+
+  @@index([challengeId])
+  @@index([userId])
+}
+
+model Tournament {
+  id          String            @id @default(cuid())
+  title       String
+  description String
+  gameId      String
+  game        Game              @relation(fields: [gameId], references: [id])
+  entryFee    Int               @default(0)
+  prizePool   Int               @default(1000)
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+
+  entries     TournamentEntry[]
+
+  @@index([gameId])
+}
+
+model TournamentEntry {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bestScore    Float      @default(0)
+  rank         Int?
+  registeredAt DateTime   @default(now())
+
+  @@unique([tournamentId, userId])
+}
+
+model LeaderboardSnapshot {
+  id         String   @id @default(cuid())
+  gameId     String
+  game       Game     @relation(fields: [gameId], references: [id])
+  scope      String   // "global", "daily", "weekly"
+  period     String   // e.g. "2026-11-16"
+  dataJson   String   // serialized ranked list of players
+  snapshotAt DateTime @default(now())
+
+  @@index([gameId, scope, period])
+}
+
+model Subscription {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan           String    // "monthly", "annual"
+  status         String    // "active", "cancelled", "past_due"
+  priceInr       Int       // 99 or 799
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model CosmeticItem {
+  id            String   @id
+  name          String
+  description   String
+  category      String   // avatar, frame, title, soundpack, cursor
+  priceCoins    Int
+  isPremiumOnly Boolean  @default(false)
+  rarity        String   @default("common")
+  createdAt     DateTime @default(now())
+
+  owners        PlayerInventory[]
+}
+
+model PlayerInventory {
+  id        String        @id @default(cuid())
+  profileId String
+  profile   PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      CosmeticItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  acquiredAt DateTime     @default(now())
+
+  @@unique([profileId, itemId])
+}
