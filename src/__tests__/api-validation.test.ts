@@ -1,23 +1,26 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { GAMES } from "@/lib/constants/games";
+import { generateVerificationHash, validateScoreBounds } from "@/lib/game-engine/scoring";
 
 const SubmitScoreSchema = z.object({
   gameId: z.string(),
   score: z.number(),
   sessionId: z.string(),
-  durationMs: z.number().nonnegative(),
+  durationMs: z.number().positive("Duration must be positive"),
   accuracyPercentage: z.number().min(0).max(100).optional(),
   averageReactionMs: z.number().optional(),
   fastestReactionMs: z.number().optional(),
   slowestReactionMs: z.number().optional(),
   rankTier: z.string(),
   timestamp: z.number(),
-  verificationHash: z.string().optional(),
+  verificationHash: z.string().min(1, "Verification hash is required"),
 });
 
 describe("API Validation & Security Edge Cases", () => {
-  it("validates legitimate score submission schema", () => {
+  it("validates legitimate score submission schema with required hash", () => {
+    const timestamp = Date.now();
+    const hash = generateVerificationHash("reaction-rush", 185, 14500, timestamp);
     const validPayload = {
       gameId: "reaction-rush",
       score: 185,
@@ -28,44 +31,108 @@ describe("API Validation & Security Edge Cases", () => {
       fastestReactionMs: 165,
       slowestReactionMs: 205,
       rankTier: "Master",
-      timestamp: Date.now(),
-      verificationHash: "v1_abcd1234",
+      timestamp,
+      verificationHash: hash,
     };
 
     const result = SubmitScoreSchema.safeParse(validPayload);
     expect(result.success).toBe(true);
   });
 
-  it("rejects negative durations or invalid accuracy percentages", () => {
+  it("rejects missing or empty verification hash", () => {
+    const payloadWithoutHash = {
+      gameId: "reaction-rush",
+      score: 185,
+      sessionId: "sess_test_123",
+      durationMs: 14500,
+      rankTier: "Master",
+      timestamp: Date.now(),
+    };
+    expect(SubmitScoreSchema.safeParse(payloadWithoutHash).success).toBe(false);
+
+    const payloadWithEmptyHash = {
+      ...payloadWithoutHash,
+      verificationHash: "",
+    };
+    expect(SubmitScoreSchema.safeParse(payloadWithEmptyHash).success).toBe(false);
+  });
+
+  it("rejects non-positive durations or invalid accuracy percentages", () => {
     const invalidDuration = {
       gameId: "target-strike",
       score: 12000,
       sessionId: "sess_invalid_dur",
-      durationMs: -500, // Invalid!
+      durationMs: -500,
       rankTier: "Elite",
       timestamp: Date.now(),
+      verificationHash: "v1_test",
     };
     expect(SubmitScoreSchema.safeParse(invalidDuration).success).toBe(false);
+
+    const zeroDuration = {
+      ...invalidDuration,
+      durationMs: 0,
+    };
+    expect(SubmitScoreSchema.safeParse(zeroDuration).success).toBe(false);
 
     const invalidAccuracy = {
       gameId: "target-strike",
       score: 12000,
       sessionId: "sess_invalid_acc",
       durationMs: 30000,
-      accuracyPercentage: 150, // Invalid! Must be <= 100
+      accuracyPercentage: 150,
       rankTier: "Elite",
       timestamp: Date.now(),
+      verificationHash: "v1_test",
     };
     expect(SubmitScoreSchema.safeParse(invalidAccuracy).success).toBe(false);
   });
 
-  it("enforces anti-cheat human threshold for Reaction Rush (< 90ms flagged)", () => {
-    const isBotReaction = (ms: number) => ms < 90;
+  it("detects cryptographic verification hash tampering", () => {
+    const timestamp = Date.now();
+    const legitimateHash = generateVerificationHash("target-strike", 25000, 30000, timestamp);
 
-    expect(isBotReaction(45)).toBe(true); // Autoclicker / macro
-    expect(isBotReaction(89)).toBe(true);
-    expect(isBotReaction(145)).toBe(false); // Godlike human reaction
-    expect(isBotReaction(220)).toBe(false); // Standard human reaction
+    // Score tampered
+    const tamperedScoreHash = generateVerificationHash("target-strike", 99999, 30000, timestamp);
+    expect(legitimateHash).not.toBe(tamperedScoreHash);
+
+    // Duration tampered
+    const tamperedDurationHash = generateVerificationHash("target-strike", 25000, 5000, timestamp);
+    expect(legitimateHash).not.toBe(tamperedDurationHash);
+
+    // Timestamp tampered
+    const tamperedTimeHash = generateVerificationHash("target-strike", 25000, 30000, timestamp - 10000);
+    expect(legitimateHash).not.toBe(tamperedTimeHash);
+  });
+
+  it("enforces multi-game biological sanity bounds via validateScoreBounds", () => {
+    // Reaction rush: < 90ms is bot/inhuman
+    expect(validateScoreBounds("reaction-rush", 45, 10000).valid).toBe(false);
+    expect(validateScoreBounds("reaction-rush", 89, 10000).valid).toBe(false);
+    expect(validateScoreBounds("reaction-rush", 150, 10000).valid).toBe(true);
+
+    // Tap frenzy: max 25 CPS ceiling
+    expect(validateScoreBounds("tap-frenzy", 300, 10000).valid).toBe(false); // 30 CPS!
+    expect(validateScoreBounds("tap-frenzy", 120, 10000).valid).toBe(true); // 12 CPS
+
+    // Perfect timing: max 5000 pts
+    expect(validateScoreBounds("perfect-timing", 5001, 15000).valid).toBe(false);
+    expect(validateScoreBounds("perfect-timing", 4800, 15000).valid).toBe(true);
+
+    // Quick decision: max 16000 pts
+    expect(validateScoreBounds("quick-decision", 18000, 20000).valid).toBe(false);
+    expect(validateScoreBounds("quick-decision", 14500, 20000).valid).toBe(true);
+
+    // Last second: max 5000 pts
+    expect(validateScoreBounds("last-second", 6000, 12000).valid).toBe(false);
+    expect(validateScoreBounds("last-second", 4500, 12000).valid).toBe(true);
+
+    // Target strike: ceiling 60000 pts
+    expect(validateScoreBounds("target-strike", 99999, 30000).valid).toBe(false);
+    expect(validateScoreBounds("target-strike", 35000, 30000).valid).toBe(true);
+
+    // Negative score
+    expect(validateScoreBounds("target-strike", -10, 30000).valid).toBe(false);
   });
 
   it("verifies all 10 games are registered with proper metadata and benchmark constraints", () => {

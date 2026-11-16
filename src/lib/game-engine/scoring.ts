@@ -71,3 +71,86 @@ export function generateVerificationHash(
   }
   return `v1_${Math.abs(hash).toString(16)}`;
 }
+
+export function validateScoreBounds(
+  gameId: GameId,
+  score: number,
+  durationMs: number
+): { valid: boolean; reason?: string } {
+  if (score < 0) {
+    return { valid: false, reason: "Score cannot be negative" };
+  }
+
+  switch (gameId) {
+    case "reaction-rush":
+      if (score < 90) {
+        return { valid: false, reason: "Inhuman latency detected (<90ms)" };
+      }
+      if (score > 10000) {
+        return { valid: false, reason: "Reaction time exceeds maximum allowed timeout" };
+      }
+      break;
+
+    case "tap-frenzy": {
+      const maxCps = 25;
+      const durationSec = Math.max(1, durationMs / 1000);
+      if (score / durationSec > maxCps || score > 250) {
+        return { valid: false, reason: "Click rate exceeds human biological capability (>25 CPS)" };
+      }
+      break;
+    }
+
+    case "perfect-timing":
+      if (score > 5000) {
+        return { valid: false, reason: "Score exceeds maximum achievable perfect timing score (5,000)" };
+      }
+      break;
+
+    case "quick-decision":
+      if (score > 16000) {
+        return { valid: false, reason: "Score exceeds maximum achievable quick decision score (16,000)" };
+      }
+      break;
+
+    case "last-second":
+      if (score > 5000) {
+        return { valid: false, reason: "Score exceeds maximum achievable countdown brake score (5,000)" };
+      }
+      break;
+
+    case "target-strike":
+      if (score > 60000) {
+        return { valid: false, reason: "Score exceeds realistic target strike ceiling (60,000)" };
+      }
+      break;
+
+    case "color-panic":
+      if (score > 50000) {
+        return { valid: false, reason: "Score exceeds maximum color panic score" };
+      }
+      break;
+
+    case "memory-flash":
+      if (score > 40000) {
+        return { valid: false, reason: "Memory sequence length exceeds realistic bounds" };
+      }
+      break;
+
+    case "flash-grid":
+      if (score > 60000) {
+        return { valid: false, reason: "Flash grid score exceeds realistic bounds" };
+      }
+      break;
+
+    case "dodge-master": {
+      const maxPtsPerSec = 500;
+      const dodgeDurationSec = Math.max(1, durationMs / 1000);
+      if (score > dodgeDurationSec * maxPtsPerSec + 1000) {
+        return { valid: false, reason: "Score accumulation exceeds survival rate limits" };
+      }
+      break;
+    }
+  }
+
+  return { valid: true };
+}
