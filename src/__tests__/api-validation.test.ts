@@ -131,6 +131,22 @@ describe("API Validation & Security Edge Cases", () => {
     expect(validateScoreBounds("target-strike", 99999, 30000).valid).toBe(false);
     expect(validateScoreBounds("target-strike", 35000, 30000).valid).toBe(true);
 
+    // Color panic: ceiling 50000 pts
+    expect(validateScoreBounds("color-panic", 55000, 30000).valid).toBe(false);
+    expect(validateScoreBounds("color-panic", 35000, 30000).valid).toBe(true);
+
+    // Memory flash: ceiling 40000 pts
+    expect(validateScoreBounds("memory-flash", 45000, 45000).valid).toBe(false);
+    expect(validateScoreBounds("memory-flash", 25000, 45000).valid).toBe(true);
+
+    // Flash grid: ceiling 60000 pts
+    expect(validateScoreBounds("flash-grid", 70000, 30000).valid).toBe(false);
+    expect(validateScoreBounds("flash-grid", 40000, 30000).valid).toBe(true);
+
+    // Dodge master: points accumulation ceiling (maxPtsPerSec * duration + 1000)
+    expect(validateScoreBounds("dodge-master", 30000, 10000).valid).toBe(false); // 30k in 10s is impossible
+    expect(validateScoreBounds("dodge-master", 5500, 10000).valid).toBe(true); // 5.5k in 10s is achievable
+
     // Negative score
     expect(validateScoreBounds("target-strike", -10, 30000).valid).toBe(false);
   });
