@@ -3,19 +3,20 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { GAMES } from "@/lib/constants/games";
 import { GameId } from "@/types/game";
+import { generateVerificationHash, validateScoreBounds } from "@/lib/game-engine/scoring";
 
 const SubmitScoreSchema = z.object({
   gameId: z.string(),
   score: z.number(),
   sessionId: z.string(),
-  durationMs: z.number().nonnegative(),
+  durationMs: z.number().positive("Duration must be positive"),
   accuracyPercentage: z.number().min(0).max(100).optional(),
   averageReactionMs: z.number().optional(),
   fastestReactionMs: z.number().optional(),
   slowestReactionMs: z.number().optional(),
   rankTier: z.string(),
   timestamp: z.number(),
-  verificationHash: z.string().optional(),
+  verificationHash: z.string().min(1, "Verification hash is required"),
   userId: z.string().optional(),
   username: z.string().optional(),
 });
@@ -38,18 +39,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unknown game identifier" }, { status: 404 });
     }
 
-    // 1. Anti-cheat checks
-    // If reaction-rush: minimum human latency threshold (sub-90ms is flagged as bot/autoclicker)
-    if (data.gameId === "reaction-rush" && data.score < 90) {
+    // 1. Anti-cheat signature verification
+    const expectedHash = generateVerificationHash(
+      data.gameId as GameId,
+      data.score,
+      data.durationMs,
+      data.timestamp
+    );
+
+    if (data.verificationHash !== expectedHash) {
       return NextResponse.json(
-        { error: "Inhuman latency detected. Submission flagged by anti-cheat guard." },
+        { error: "Anti-cheat verification failed: invalid signature hash" },
+        { status: 403 }
+      );
+    }
+
+    // 2. Timestamp clock skew verification (max 5 minutes window)
+    const now = Date.now();
+    const maxClockSkewMs = 5 * 60 * 1000;
+    if (Math.abs(now - data.timestamp) > maxClockSkewMs) {
+      return NextResponse.json(
+        { error: "Anti-cheat verification failed: session timestamp expired or out of bounds" },
         { status: 422 }
       );
     }
 
-    // If duration is negative or unrealistic
-    if (data.durationMs <= 0) {
-      return NextResponse.json({ error: "Invalid session duration" }, { status: 422 });
+    // 3. Game bounds & biological sanity checks across all mini-games
+    const boundsCheck = validateScoreBounds(data.gameId as GameId, data.score, data.durationMs);
+    if (!boundsCheck.valid) {
+      return NextResponse.json(
+        { error: `Anti-cheat guard triggered: ${boundsCheck.reason}` },
+        { status: 422 }
+      );
     }
 
     // 2. Persist in database
