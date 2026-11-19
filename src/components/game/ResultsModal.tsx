@@ -14,11 +14,15 @@ import {
   Clock,
   Crosshair,
   Award,
+  CheckCircle2,
+  CloudOff,
+  Loader2,
 } from "lucide-react";
 import { GameMetadata, GameResult } from "@/types/game";
 import { usePlayerStore } from "@/lib/store/playerStore";
 import { cn } from "@/lib/utils";
 import { ShareCardModal } from "./ShareCardModal";
+import { buildScorePayload, submitScore, flushPendingScores } from "@/lib/services/scoreSubmission";
 
 interface ResultsModalProps {
   meta: GameMetadata;
@@ -29,6 +33,9 @@ interface ResultsModalProps {
 export function ResultsModal({ meta, result, onRestart }: ResultsModalProps) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [challengeCopied, setChallengeCopied] = useState(false);
+  const [submissionStatus, setSubmissionStatus] = useState<
+    "idle" | "submitting" | "synced" | "queued" | "failed"
+  >("idle");
 
   const { recordGameResult, profile } = usePlayerStore();
   const [sessionProgression, setSessionProgression] = useState<{
@@ -43,6 +50,23 @@ export function ResultsModal({ meta, result, onRestart }: ResultsModalProps) {
     const prog = recordGameResult(result);
     setSessionProgression(prog);
 
+    // Asynchronously dispatch score to backend persistence API
+    const payload = buildScorePayload(result, profile);
+    setSubmissionStatus("submitting");
+    submitScore(payload)
+      .then((res) => {
+        if (res.success) {
+          setSubmissionStatus("synced");
+        } else if (res.queued) {
+          setSubmissionStatus("queued");
+        } else {
+          setSubmissionStatus("failed");
+        }
+      })
+      .catch(() => {
+        setSubmissionStatus("failed");
+      });
+
     // Fire victory confetti if personal best or high tier
     if (prog.isNewPb || result.rankTier === "Cyber God" || result.rankTier === "Master") {
       confetti({
@@ -52,7 +76,22 @@ export function ResultsModal({ meta, result, onRestart }: ResultsModalProps) {
         colors: ["#00E5FF", "#8B5CF6", "#22C55E", "#F59E0B"],
       });
     }
-  }, [result, recordGameResult]);
+
+    const handleOnline = () => {
+      flushPendingScores()
+        .then((count) => {
+          if (count > 0) {
+            setSubmissionStatus("synced");
+          }
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [result, recordGameResult, profile]);
 
   const tierColors: Record<string, { bg: string; text: string; border: string }> = {
     "Cyber God": { bg: "bg-gradient-to-r from-amber-500/20 to-cyan-500/20", text: "text-amber-300", border: "border-amber-400" },
@@ -106,6 +145,28 @@ export function ResultsModal({ meta, result, onRestart }: ResultsModalProps) {
           >
             <Award className="w-4 h-4" />
             <span>Reflex Tier: {result.rankTier}</span>
+          </div>
+
+          {/* Cloud Sync / Leaderboard Status */}
+          <div className="mt-1 flex items-center justify-center min-h-[1.25rem]">
+            {submissionStatus === "submitting" && (
+              <span className="flex items-center gap-1.5 text-[11px] font-mono text-cyan-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Syncing to Leaderboard...
+              </span>
+            )}
+            {submissionStatus === "synced" && (
+              <span className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Score Verified & Saved to Leaderboard
+              </span>
+            )}
+            {submissionStatus === "queued" && (
+              <span className="flex items-center gap-1.5 text-[11px] font-mono text-amber-400">
+                <CloudOff className="w-3.5 h-3.5" />
+                Offline: Saved Locally (Queued for Sync)
+              </span>
+            )}
           </div>
         </div>
 
