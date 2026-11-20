@@ -18,7 +18,7 @@ This document tracks the autonomous resolution lifecycle of all open GitHub issu
 | Priority | Issue | Title | Severity | Branch | PR | Review Status | Merge Status | Main Prop. | Release | Status |
 |---|---|---|---|---|---|---|---|---|---|---|
 | **P0** | #1 | [SEC-01] Missing Anti-Cheat Verification Hash Validation and Score Bounds in Score Submission API | Critical | `fix/sec-01-anti-cheat-verification` | [#13](https://github.com/DevGodVGS/reflex-arena/pull/13) | Approved (@VgsDev) | Merged (`5a6763c`) | Propagated (`e01ac66`) | `v0.1.1` | **Completed** |
-| **P0** | #2 | [ARCH-01] Frontend Gameplay Results Never Dispatched to Backend Score Persistence API | Critical | `fix/issue-2-frontend-score-dispatch` | TBD | Pending | Pending | Pending | Pending | **Next (Active)** |
+| **P0** | #2 | [ARCH-01] Frontend Gameplay Results Never Dispatched to Backend Score Persistence API | Critical | `fix/issue-2-frontend-score-dispatch` | [#15](https://github.com/DevGodVGS/reflex-arena/pull/15) | In Review | Pending | Pending | Pending | **In Progress (Active)** |
 | **P1** | #3 | [SEC-02] IDOR Vulnerability and Unhandled Foreign Key Crash on Missing User in Score Submission | High | `fix/issue-3-idor-foreign-key-validation` | TBD | Pending | Pending | Pending | Pending | Queued |
 | **P1** | #4 | [BUG-01] TapFrenzy Game Timer Interval Fails to Instantiate on Restart Due to Stale Ref | High | `fix/issue-4-tapfrenzy-timer-restart` | TBD | Pending | Pending | Pending | Pending | Queued |
 | **P1** | #5 | [BUG-02] DodgeMaster Resets Score and Hazard State to Zero Upon Pause and Resume | High | `fix/issue-5-dodgemaster-pause-resume-state` | TBD | Pending | Pending | Pending | Pending | Queued |
@@ -44,3 +44,10 @@ This document tracks the autonomous resolution lifecycle of all open GitHub issu
 - **Main Propagation**: PR #14 merged into `main` (`e01ac66`)
 - **Release Version**: `v0.1.1`
 - **Status**: Completed & Closed
+
+### Issue #2: [ARCH-01] Frontend Gameplay Results Never Dispatched to Backend Score Persistence API
+- **Priority**: P0 (Critical)
+- **Branch**: `fix/issue-2-frontend-score-dispatch`
+- **PR**: [#15](https://github.com/DevGodVGS/reflex-arena/pull/15)
+- **Review Iterations**: 0
+- **Status**: In Review by Independent Senior Developer Reviewer (`@VgsDev`)
